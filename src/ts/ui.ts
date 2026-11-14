@@ -11,11 +11,13 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"] as c
 export interface CajaUI {
   render: (s: CajaState) => void;
   onCobrar: (handler: () => void) => void;
+  onMic: (handler: () => void) => void;
   onNuevo: (handler: () => void) => void;
   onFixturePagado: (handler: () => void) => void;
   onProbarTts: (handler: () => void) => void;
   onProbarStt: (handler: () => void) => void;
   setVozMsg: (texto: string) => void;
+  setMicListening: (on: boolean) => void;
 }
 
 function qrSrc(base64?: string): string | null {
@@ -79,6 +81,21 @@ export function mountUI(root: HTMLElement): CajaUI {
     <header class="caja-brand">
       <p class="caja-eyebrow">CoDi · cajero</p>
       <h1 class="caja-title">La Bocina</h1>
+      <button
+        type="button"
+        class="caja-mic"
+        data-el="mic"
+        aria-label="Cobrar por voz"
+        title="Di: cóbrale 35 pesos"
+      >
+        <svg class="caja-mic-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-3.07A7 7 0 0 0 19 11h-2z"
+          />
+        </svg>
+        <span class="caja-mic-label" data-el="mic-label">Hablar</span>
+      </button>
     </header>
 
     <section class="caja-stage" aria-live="polite">
@@ -122,6 +139,8 @@ export function mountUI(root: HTMLElement): CajaUI {
   }
 
   const cobrarBtn = root.querySelector<HTMLButtonElement>("[data-el=cobrar]")!;
+  const micBtn = root.querySelector<HTMLButtonElement>("[data-el=mic]")!;
+  const micLabel = root.querySelector<HTMLElement>("[data-el=mic-label]")!;
   const nuevoBtn = root.querySelector<HTMLButtonElement>("[data-el=nuevo]")!;
   const fxBtn = root.querySelector<HTMLButtonElement>("[data-el=fx-pagado]")!;
   const vozLab = root.querySelector<HTMLElement>("[data-el=voz-lab]")!;
@@ -130,12 +149,15 @@ export function mountUI(root: HTMLElement): CajaUI {
   const vozMsg = root.querySelector<HTMLElement>("[data-el=voz-msg]")!;
 
   let cobrarHandler: (() => void) | null = null;
+  let micHandler: (() => void) | null = null;
   let nuevoHandler: (() => void) | null = null;
   let fxHandler: (() => void) | null = null;
   let ttsHandler: (() => void) | null = null;
   let sttHandler: (() => void) | null = null;
+  let micListening = false;
 
   cobrarBtn.addEventListener("click", () => cobrarHandler?.());
+  micBtn.addEventListener("click", () => micHandler?.());
   nuevoBtn.addEventListener("click", () => nuevoHandler?.());
   fxBtn.addEventListener("click", () => fxHandler?.());
   ttsBtn.addEventListener("click", () => ttsHandler?.());
@@ -215,13 +237,18 @@ export function mountUI(root: HTMLElement): CajaUI {
     });
 
     const montoOk = parseMonto(s.digitos) > 0;
-    cobrarBtn.hidden = !(
+    const canCobrarVista =
       s.vista === "idle" ||
       s.vista === "error" ||
       s.vista === "expirado" ||
-      s.vista === "sin_conexion"
-    );
-    cobrarBtn.disabled = !montoOk || s.vista === "creando";
+      s.vista === "sin_conexion";
+    cobrarBtn.hidden = !canCobrarVista;
+    cobrarBtn.disabled = !montoOk || s.vista === "creando" || micListening;
+    micBtn.hidden = !(canCobrarVista || micListening);
+    micBtn.disabled = s.vista === "creando" || micListening;
+    micBtn.classList.toggle("is-listening", micListening);
+    micBtn.setAttribute("aria-busy", micListening ? "true" : "false");
+    micLabel.textContent = micListening ? "Escuchando…" : "Hablar";
     nuevoBtn.hidden = !(
       s.vista === "pagado" ||
       s.vista === "entregado" ||
@@ -230,8 +257,8 @@ export function mountUI(root: HTMLElement): CajaUI {
       s.vista === "error"
     );
     fxBtn.hidden = !(showFixtureControls && s.vista === "pendiente");
-    ttsBtn.disabled = s.vista === "creando";
-    sttBtn.disabled = s.vista === "creando";
+    ttsBtn.disabled = s.vista === "creando" || micListening;
+    sttBtn.disabled = s.vista === "creando" || micListening;
   }
 
   function setVozMsg(texto: string): void {
@@ -244,12 +271,20 @@ export function mountUI(root: HTMLElement): CajaUI {
     vozMsg.textContent = texto;
   }
 
+  function setMicListening(on: boolean): void {
+    micListening = on;
+    render(getState());
+  }
+
   render(getState());
 
   return {
     render,
     onCobrar(handler) {
       cobrarHandler = handler;
+    },
+    onMic(handler) {
+      micHandler = handler;
     },
     onNuevo(handler) {
       nuevoHandler = handler;
@@ -264,6 +299,7 @@ export function mountUI(root: HTMLElement): CajaUI {
       sttHandler = handler;
     },
     setVozMsg,
+    setMicListening,
   };
 }
 
