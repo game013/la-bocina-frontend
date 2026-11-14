@@ -1,6 +1,7 @@
 /**
  * Parser fijo de frases de cobro (SPRINT / DIVISION).
  * Sin LLM: dígitos y números en español (lo que suele devolver el STT).
+ * Busca el monto en cualquier parte de la frase («quiero pagar treinta y cinco…»).
  */
 
 export type ParseCobroOk = {
@@ -78,6 +79,16 @@ const CENTENAS: Record<string, number> = {
   novecientos: 900,
 };
 
+function esInicioNumero(tok: string): boolean {
+  return (
+    /^\d/.test(tok) ||
+    tok === "mil" ||
+    UNIDADES[tok] != null ||
+    DECENAS[tok] != null ||
+    CENTENAS[tok] != null
+  );
+}
+
 /** Quita acentos y deja letras, dígitos, punto y espacios. */
 function normalizar(raw: string): string {
   return raw
@@ -101,13 +112,6 @@ function sacarTelefono(texto: string): { resto: string; telefono?: string } {
   };
 }
 
-function quitarVerboCobro(texto: string): string {
-  return texto
-    .replace(/^(?:cobrale|cobra|cobrar|cobrenle|cobren)\s+/, "")
-    .replace(/^le\s+/, "")
-    .trim();
-}
-
 function pesosValido(n: number): boolean {
   return Number.isFinite(n) && n > 0 && n <= 1_000_000;
 }
@@ -118,7 +122,7 @@ function msgFallo(oido: string): string {
 }
 
 /**
- * Consume tokens de número en español desde el inicio.
+ * Consume tokens de número en español desde el inicio del slice.
  * Devuelve valor + cuántos tokens usó, o null.
  */
 function consumirNumeroPalabras(tokens: string[]): { valor: number; n: number } | null {
@@ -126,8 +130,8 @@ function consumirNumeroPalabras(tokens: string[]): { valor: number; n: number } 
 
   let i = 0;
   let total = 0;
+  const start = 0;
 
-  // miles: «mil» | «dos mil» | …
   if (tokens[i] === "mil") {
     total += 1000;
     i += 1;
@@ -145,9 +149,6 @@ function consumirNumeroPalabras(tokens: string[]): { valor: number; n: number } 
   if (i < tokens.length && CENTENAS[tokens[i]!] != null) {
     total += CENTENAS[tokens[i]!]!;
     i += 1;
-    if (tokens[i - 1] === "cien" && i < tokens.length && tokens[i] !== "con") {
-      // «cien» solo si no sigue más número (salvo «con» de centavos)
-    }
   }
 
   if (i < tokens.length && DECENAS[tokens[i]!] != null) {
@@ -167,27 +168,99 @@ function consumirNumeroPalabras(tokens: string[]): { valor: number; n: number } 
     i += 1;
   }
 
-  if (i === 0) return null;
+  if (i === start) return null;
   return { valor: total, n: i };
 }
 
-function parseCentavosToken(tok: string): number | null {
+/** Centavos: «50», «5»→50, «cincuenta», «veintitres». */
+function parseCentavosDesde(tokens: string[], from: number): { cents: number; n: number } | null {
+  if (from >= tokens.length) return null;
+  const tok = tokens[from]!;
+
   if (/^\d{1,2}$/.test(tok)) {
-    return tok.length === 1 ? Number(tok) * 10 : Number(tok);
+    const cents = tok.length === 1 ? Number(tok) * 10 : Number(tok);
+    return { cents, n: 1 };
   }
-  if (UNIDADES[tok] != null) {
-    const u = UNIDADES[tok]!;
-    if (u < 10) return u * 10;
-    if (u < 100) return u;
+
+  const palabras = consumirNumeroPalabras(tokens.slice(from));
+  if (palabras && palabras.valor > 0 && palabras.valor < 100) {
+    // «cinco» solo tras «con» → 50 céntimos (mismo criterio que dígito 1)
+    if (palabras.n === 1 && UNIDADES[tok] != null && UNIDADES[tok]! < 10) {
+      return { cents: UNIDADES[tok]! * 10, n: 1 };
+    }
+    return { cents: palabras.valor, n: palabras.n };
   }
-  if (DECENAS[tok] != null) return DECENAS[tok]!;
+
+  return null;
+}
+
+function montoDesdeTokens(
+  tokens: string[],
+  start: number,
+): { monto: number } | null {
+  const slice = tokens.slice(start);
+
+  // «un centavo»
+  if (
+    (slice[0] === "un" || slice[0] === "uno" || slice[0] === "1") &&
+    (slice[1] === "centavo" || slice[1] === "centavos")
+  ) {
+    return { monto: 0.01 };
+  }
+  if (slice[0] === "centavo" || slice[0] === "centavos") {
+    return { monto: 0.01 };
+  }
+
+  // «un peso»
+  if (
+    (slice[0] === "un" || slice[0] === "uno" || slice[0] === "1") &&
+    (slice[1] === "peso" || slice[1] === "pesos")
+  ) {
+    return { monto: 1 };
+  }
+
+  // Dígitos: 35.50 / 35,50
+  if (slice[0] && /^(\d+)[.,](\d{1,2})$/.test(slice[0])) {
+    const m = slice[0].match(/^(\d+)[.,](\d{1,2})$/)!;
+    const enteros = Number(m[1]);
+    const frac = m[2]!.padEnd(2, "0").slice(0, 2);
+    return { monto: enteros + Number(frac) / 100 };
+  }
+
+  // Dígitos: 35 [pesos] [con 50]
+  if (slice[0] && /^\d+$/.test(slice[0])) {
+    const enteros = Number(slice[0]);
+    let j = 1;
+    if (slice[j] === "pesos" || slice[j] === "peso" || slice[j] === "mxn") j += 1;
+    let cents = 0;
+    if (slice[j] === "con") {
+      const c = parseCentavosDesde(slice, j + 1);
+      if (c) cents = c.cents;
+    }
+    return { monto: enteros + cents / 100 };
+  }
+
+  // Palabras: treinta y cinco [pesos] [con veintitres]
+  const entero = consumirNumeroPalabras(slice);
+  if (!entero) return null;
+
+  let j = entero.n;
+  let cents = 0;
+  if (slice[j] === "pesos" || slice[j] === "peso" || slice[j] === "mxn") j += 1;
+  if (slice[j] === "con") {
+    const c = parseCentavosDesde(slice, j + 1);
+    if (c) cents = c.cents;
+  }
+
+  if (entero.valor > 0 || cents > 0) {
+    return { monto: entero.valor + cents / 100 };
+  }
   return null;
 }
 
 /**
  * Interpreta una transcripción STT → monto en pesos.
- * Acepta dígitos («35 pesos») y palabras («treinta y cinco pesos»).
- * Tolera cola («… por un cafe»).
+ * Acepta dígitos y palabras; el monto puede ir a mitad de frase.
  */
 export function parseFraseCobro(raw: string): ParseCobroResult {
   const oido = raw.trim();
@@ -195,62 +268,20 @@ export function parseFraseCobro(raw: string): ParseCobroResult {
   if (!texto) return { ok: false, mensaje: msgFallo(oido) };
 
   const { resto, telefono } = sacarTelefono(texto);
-  texto = quitarVerboCobro(resto);
+  texto = resto
+    .replace(/\b(?:cobrale|cobra|cobrar|cobrenle|cobren)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!texto) return { ok: false, mensaje: msgFallo(oido) };
 
-  // «un centavo» / «1 centavo»
-  if (/^(?:un|uno|1)\s+centavos?\b/.test(texto) || /^centavo\b/.test(texto)) {
-    return wrap(0.01, telefono, oido);
-  }
-
-  // «un peso» / «1 peso»
-  if (/^(?:un|uno|1)\s+pesos?\b/.test(texto)) {
-    return wrap(1, telefono, oido);
-  }
-
-  // «35.50» / «35,50»
-  let m = texto.match(/^(\d+)[.,](\d{1,2})\s*(?:pesos?|mxn)?\b/);
-  if (m) {
-    const enteros = Number(m[1]);
-    const frac = m[2]!.padEnd(2, "0").slice(0, 2);
-    return wrap(enteros + Number(frac) / 100, telefono, oido);
-  }
-
-  // «35 con 50» / «35 pesos con 5»
-  m = texto.match(/^(\d+)\s*(?:pesos?|mxn)?\s+con\s+(\d{1,2})\b/);
-  if (m) {
-    const enteros = Number(m[1]);
-    const centsRaw = m[2]!;
-    const cents = centsRaw.length === 1 ? Number(centsRaw) * 10 : Number(centsRaw);
-    return wrap(enteros + cents / 100, telefono, oido);
-  }
-
-  // «35 pesos» / «35»
-  m = texto.match(/^(\d+)\s*(?:pesos?|mxn)?\b/);
-  if (m) {
-    return wrap(Number(m[1]), telefono, oido);
-  }
-
-  // Palabras: «treinta y cinco pesos» · «treinta y cinco con cincuenta»
   const tokens = texto.split(" ");
-  const entero = consumirNumeroPalabras(tokens);
-  if (entero) {
-    let j = entero.n;
-    let cents = 0;
-    if (tokens[j] === "pesos" || tokens[j] === "peso" || tokens[j] === "mxn") {
-      j += 1;
-    }
-    if (tokens[j] === "con" && tokens[j + 1]) {
-      const c = parseCentavosToken(tokens[j + 1]!);
-      if (c != null) {
-        cents = c;
-        j += 2;
-        if (tokens[j] === "centavos" || tokens[j] === "centavo") j += 1;
-      }
-    }
-    // Debe haber consumido al menos el número; cola («por un cafe») ok.
-    if (entero.valor > 0 || cents > 0) {
-      return wrap(entero.valor + cents / 100, telefono, oido);
+
+  // Prueba cada posición donde podría empezar un monto (salta «quiero pagar…»).
+  for (let i = 0; i < tokens.length; i++) {
+    if (!esInicioNumero(tokens[i]!)) continue;
+    const hit = montoDesdeTokens(tokens, i);
+    if (hit && pesosValido(hit.monto)) {
+      return wrap(hit.monto, telefono, oido);
     }
   }
 
