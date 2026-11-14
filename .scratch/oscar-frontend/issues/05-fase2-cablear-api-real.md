@@ -2,8 +2,18 @@
 
 Type: task
 Status: open
-Blocked by: 03, 04
+Blocked by: 03
 
 ## Question
 
-¿Qué cambios concretos quitan la dependencia de fixtures en el camino feliz y conectan: `POST /api/cobros` → pintar `qrImage`; escuchar `GET /api/eventos` (SSE) + `GET /api/cobros/:id` cada 2s; al `pagado` → verde + Bocina (misma ruta que fase 1); opcionalmente reaccionar a `creado` para cobros del MCP? Requiere aviso de Rafael de que los endpoints responden de verdad.
+¿Qué cambios concretos conectan la pantalla al server de Rafael?
+
+**Base URL (2026-11-14):** `https://merger-fish-gets-peace.trycloudflare.com`
+
+- `POST /api/cobros` → pintar `qrImage` (base64; opcional `GET /api/cobros/{id}/qr` como PNG)
+- `GET /api/eventos` (SSE) + poll `GET /api/cobros/{id}` cada 2s
+- Al `pagado` → verde (+ Bocina cuando 04 esté listo; si no, verde sin voz)
+- Opcional: reaccionar a `creado` (MCP)
+- `VITE_API_BASE` (o config) apuntando al tunnel; sin secretos pey en el front
+
+Rafael ya avisó: endpoints expuestos. Bocina/Entregado no bloquean cablear el cobro+QR+verde.
