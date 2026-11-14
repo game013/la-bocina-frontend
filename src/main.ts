@@ -7,6 +7,7 @@ import {
   unlockAudio,
 } from "./ts/bocina";
 import { fixtureCrearCobro, fixturePagado, useFixtures } from "./ts/fixtures";
+import { parseFraseCobro } from "./ts/parser";
 import { grabarClip, transcribirAudio } from "./ts/voz";
 import {
   applyDetalle,
@@ -14,8 +15,10 @@ import {
   parseMonto,
   resetIdle,
   setCreando,
+  setDigitosDesdePesos,
   setError,
   setExpirado,
+  setMensajeIdle,
   setPagado,
   setPendiente,
   setSinConexion,
@@ -63,6 +66,7 @@ function onServidorEvent(ev: EventoServidor): void {
 
   switch (ev.tipo) {
     case "creado": {
+      // Fuente de verdad para cobros del MCP (o POST propio si llega antes).
       if (getState().vista === "idle" || getState().vista === "creando") {
         const cobro = {
           ...ev.data,
@@ -120,36 +124,81 @@ if (!useFixtures()) {
   stopSse = watchEventos(onServidorEvent);
 }
 
-ui.onCobrar(() => {
-  void (async () => {
-    const monto = parseMonto(getState().digitos);
-    if (monto <= 0) return;
+async function iniciarCobro(): Promise<void> {
+  const monto = parseMonto(getState().digitos);
+  if (monto <= 0) return;
 
-    if (useFixtures()) {
-      setCreando();
-      window.setTimeout(() => {
-        const cobro = fixtureCrearCobro(monto);
-        setPendiente(cobro);
-      }, 200);
+  if (useFixtures()) {
+    setCreando();
+    window.setTimeout(() => {
+      const cobro = fixtureCrearCobro(monto);
+      setPendiente(cobro);
+    }, 200);
+    return;
+  }
+
+  setCreando();
+  try {
+    const cobro = await crearCobro({
+      monto,
+      concepto: "Venta",
+      canal: "qr",
+    });
+    setPendiente(cobro);
+    wireCobroWatch(cobro.id);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/sin respuesta|no respondió|tunnel|sin conexión|failed to fetch|network/i.test(msg)) {
+      setSinConexion(msg);
+    } else {
+      setError(msg);
+    }
+  }
+}
+
+ui.onCobrar(() => {
+  void iniciarCobro();
+});
+
+ui.onMic(() => {
+  void (async () => {
+    const vista = getState().vista;
+    if (
+      vista !== "idle" &&
+      vista !== "error" &&
+      vista !== "expirado" &&
+      vista !== "sin_conexion"
+    ) {
       return;
     }
 
-    setCreando();
+    setMensajeIdle("");
     try {
-      const cobro = await crearCobro({
-        monto,
-        concepto: "Venta",
-        canal: "qr",
-      });
-      setPendiente(cobro);
-      wireCobroWatch(cobro.id);
+      // Gesto → «Listo» (primera vez) desbloquea TTS para el pagado.
+      await unlockAudio();
+      ui.setMicListening(true);
+      const clip = await grabarClip(3000);
+      ui.setMicListening(false);
+      setMensajeIdle("Transcribiendo…");
+      const texto = await transcribirAudio(clip);
+      const parsed = parseFraseCobro(texto);
+      if (!parsed.ok) {
+        setMensajeIdle(parsed.mensaje);
+        return;
+      }
+      setDigitosDesdePesos(parsed.monto);
+      await iniciarCobro();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/sin respuesta|no respondió|tunnel|sin conexión|failed to fetch|network/i.test(msg)) {
-        setSinConexion(msg);
-      } else {
-        setError(msg);
-      }
+      setMensajeIdle(
+        /permission|NotAllowed|denied/i.test(msg)
+          ? "Permiso de micrófono denegado"
+          : msg.length > 120
+            ? `${msg.slice(0, 100)}…`
+            : msg || "No se pudo escuchar. Usa el teclado.",
+      );
+    } finally {
+      ui.setMicListening(false);
     }
   })();
 });
@@ -198,7 +247,12 @@ ui.onProbarStt(() => {
       const clip = await grabarClip(3000);
       ui.setVozMsg("Transcribiendo…");
       const texto = await transcribirAudio(clip);
-      ui.setVozMsg(`STT: «${texto}»`);
+      const parsed = parseFraseCobro(texto);
+      ui.setVozMsg(
+        parsed.ok
+          ? `STT: «${texto}» → $${parsed.monto.toFixed(2)}`
+          : `STT: «${texto}» · ${parsed.mensaje}`,
+      );
     } catch (err) {
       ui.setVozMsg(err instanceof Error ? err.message : String(err));
     }
