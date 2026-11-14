@@ -14,9 +14,6 @@ export interface CajaUI {
   onMic: (handler: () => void) => void;
   onNuevo: (handler: () => void) => void;
   onFixturePagado: (handler: () => void) => void;
-  onProbarTts: (handler: () => void) => void;
-  onProbarStt: (handler: () => void) => void;
-  setVozMsg: (texto: string) => void;
   setMicListening: (on: boolean) => void;
 }
 
@@ -116,14 +113,6 @@ export function mountUI(root: HTMLElement): CajaUI {
         <button type="button" class="caja-btn caja-btn-ghost" data-el="nuevo" hidden>Nuevo cobro</button>
         <button type="button" class="caja-btn caja-btn-fixture" data-el="fx-pagado" hidden>Simular pagado</button>
       </div>
-      <div class="caja-voz-lab" data-el="voz-lab" hidden>
-        <p class="caja-voz-hint">Prueba voz (sin cobro)</p>
-        <div class="caja-voz-actions">
-          <button type="button" class="caja-btn caja-btn-voz" data-el="probar-tts">Probar TTS</button>
-          <button type="button" class="caja-btn caja-btn-voz" data-el="probar-stt">Mic · STT (~3s)</button>
-        </div>
-        <p class="caja-voz-msg" data-el="voz-msg" hidden></p>
-      </div>
     </section>
   `;
 
@@ -143,30 +132,20 @@ export function mountUI(root: HTMLElement): CajaUI {
   const micLabel = root.querySelector<HTMLElement>("[data-el=mic-label]")!;
   const nuevoBtn = root.querySelector<HTMLButtonElement>("[data-el=nuevo]")!;
   const fxBtn = root.querySelector<HTMLButtonElement>("[data-el=fx-pagado]")!;
-  const vozLab = root.querySelector<HTMLElement>("[data-el=voz-lab]")!;
-  const ttsBtn = root.querySelector<HTMLButtonElement>("[data-el=probar-tts]")!;
-  const sttBtn = root.querySelector<HTMLButtonElement>("[data-el=probar-stt]")!;
-  const vozMsg = root.querySelector<HTMLElement>("[data-el=voz-msg]")!;
 
   let cobrarHandler: (() => void) | null = null;
   let micHandler: (() => void) | null = null;
   let nuevoHandler: (() => void) | null = null;
   let fxHandler: (() => void) | null = null;
-  let ttsHandler: (() => void) | null = null;
-  let sttHandler: (() => void) | null = null;
   let micListening = false;
 
   cobrarBtn.addEventListener("click", () => cobrarHandler?.());
   micBtn.addEventListener("click", () => micHandler?.());
   nuevoBtn.addEventListener("click", () => nuevoHandler?.());
   fxBtn.addEventListener("click", () => fxHandler?.());
-  ttsBtn.addEventListener("click", () => ttsHandler?.());
-  sttBtn.addEventListener("click", () => sttHandler?.());
 
   const qs = new URLSearchParams(window.location.search);
   const showFixtureControls = qs.get("fixture") === "1";
-  const showVozLab = qs.get("voz") === "1" || showFixtureControls;
-  vozLab.hidden = !showVozLab;
 
   function render(s: CajaState): void {
     root.dataset.vista = s.vista;
@@ -257,18 +236,6 @@ export function mountUI(root: HTMLElement): CajaUI {
       s.vista === "error"
     );
     fxBtn.hidden = !(showFixtureControls && s.vista === "pendiente");
-    ttsBtn.disabled = s.vista === "creando" || micListening;
-    sttBtn.disabled = s.vista === "creando" || micListening;
-  }
-
-  function setVozMsg(texto: string): void {
-    if (!texto) {
-      vozMsg.hidden = true;
-      vozMsg.textContent = "";
-      return;
-    }
-    vozMsg.hidden = false;
-    vozMsg.textContent = texto;
   }
 
   function setMicListening(on: boolean): void {
@@ -292,13 +259,6 @@ export function mountUI(root: HTMLElement): CajaUI {
     onFixturePagado(handler) {
       fxHandler = handler;
     },
-    onProbarTts(handler) {
-      ttsHandler = handler;
-    },
-    onProbarStt(handler) {
-      sttHandler = handler;
-    },
-    setVozMsg,
     setMicListening,
   };
 }
