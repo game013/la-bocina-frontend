@@ -3,7 +3,7 @@ import { crearCobro, pollCobro, watchEventos, type StopWatch } from "./ts/api";
 import { cantarPagado, installAudioUnlock, unlockAudio } from "./ts/bocina";
 import { fixtureCrearCobro, fixturePagado, useFixtures } from "./ts/fixtures";
 import { parseFraseCobro } from "./ts/parser";
-import { grabarClip, transcribirAudio } from "./ts/voz";
+import { iniciarGrabacion, transcribirAudio, type Grabacion } from "./ts/voz";
 import {
   applyDetalle,
   getState,
@@ -155,25 +155,44 @@ ui.onCobrar(() => {
   void iniciarCobro("qr");
 });
 
-ui.onMic(() => {
-  void (async () => {
-    const vista = getState().vista;
-    if (
-      vista !== "idle" &&
-      vista !== "error" &&
-      vista !== "expirado" &&
-      vista !== "sin_conexion"
-    ) {
-      return;
-    }
+/** Hablar → Detener (tope 12 s). Segundo toque corta; no hay timer fijo de 3 s. */
+let grabacionActiva: Grabacion | null = null;
 
+ui.onMic(() => {
+  if (grabacionActiva) {
+    grabacionActiva.stop();
+    return;
+  }
+
+  const vista = getState().vista;
+  if (
+    vista !== "idle" &&
+    vista !== "error" &&
+    vista !== "expirado" &&
+    vista !== "sin_conexion"
+  ) {
+    return;
+  }
+
+  void (async () => {
     setMensajeIdle("");
     try {
       // Gesto → «Listo» (primera vez) desbloquea TTS para el pagado.
       await unlockAudio();
+      const grabacion = await iniciarGrabacion(12_000);
+      grabacionActiva = grabacion;
       ui.setMicListening(true);
-      const clip = await grabarClip(3000);
+      setMensajeIdle("Habla… toca Detener cuando termines");
+
+      const clip = await grabacion.blob;
+      grabacionActiva = null;
       ui.setMicListening(false);
+
+      if (clip.size < 200) {
+        setMensajeIdle("No capturé audio. Intenta de nuevo.");
+        return;
+      }
+
       setMensajeIdle("Transcribiendo…");
       const texto = await transcribirAudio(clip);
       const parsed = parseFraseCobro(texto);
@@ -193,6 +212,7 @@ ui.onMic(() => {
             : msg || "No se pudo escuchar. Usa el teclado.",
       );
     } finally {
+      grabacionActiva = null;
       ui.setMicListening(false);
     }
   })();

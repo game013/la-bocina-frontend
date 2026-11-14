@@ -224,10 +224,15 @@ export function mountUI(root: HTMLElement): CajaUI {
     cobrarBtn.hidden = !canCobrarVista;
     cobrarBtn.disabled = !montoOk || s.vista === "creando" || micListening;
     micBtn.hidden = !(canCobrarVista || micListening);
-    micBtn.disabled = s.vista === "creando" || micListening;
+    // Mientras escucha debe poder tocarse → Detener.
+    micBtn.disabled = s.vista === "creando";
     micBtn.classList.toggle("is-listening", micListening);
     micBtn.setAttribute("aria-busy", micListening ? "true" : "false");
-    micLabel.textContent = micListening ? "Escuchando…" : "Hablar";
+    micBtn.setAttribute(
+      "aria-label",
+      micListening ? "Detener dictado" : "Cobrar por voz",
+    );
+    micLabel.textContent = micListening ? "Detener" : "Hablar";
     nuevoBtn.hidden = !(
       s.vista === "pagado" ||
       s.vista === "entregado" ||
