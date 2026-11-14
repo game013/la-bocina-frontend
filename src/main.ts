@@ -1,5 +1,6 @@
 import "./css/caja.css";
 import { crearCobro, pollCobro, watchEventos, type StopWatch } from "./ts/api";
+import { cantarPagado, installAudioUnlock } from "./ts/bocina";
 import { fixtureCrearCobro, fixturePagado, useFixtures } from "./ts/fixtures";
 import {
   applyDetalle,
@@ -15,7 +16,7 @@ import {
   setTardio,
   subscribe,
 } from "./ts/state";
-import type { EventoServidor } from "./ts/types";
+import type { EventoPagado, EventoServidor } from "./ts/types";
 import { bindRender, mountUI } from "./ts/ui";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -25,6 +26,7 @@ if (!app) {
 
 const ui = mountUI(app);
 bindRender(ui, subscribe);
+installAudioUnlock(app);
 
 let stopPoll: StopWatch | null = null;
 let stopSse: StopWatch | null = null;
@@ -34,9 +36,20 @@ function clearWatchers(): void {
   stopPoll = null;
 }
 
+function confirmarPagado(ev: EventoPagado): void {
+  if (setPagado(ev)) void cantarPagado(ev);
+}
+
 function wireCobroWatch(id: string): void {
   clearWatchers();
-  stopPoll = pollCobro(id, (detalle) => applyDetalle(detalle));
+  // Poll 2s = oído confiable a verde; la Bocina dispara en el mismo camino.
+  stopPoll = pollCobro(id, (detalle) => {
+    const ev = applyDetalle(detalle);
+    if (ev) {
+      void cantarPagado(ev);
+      clearWatchers();
+    }
+  });
 }
 
 function onServidorEvent(ev: EventoServidor): void {
@@ -57,7 +70,7 @@ function onServidorEvent(ev: EventoServidor): void {
     }
     case "pagado": {
       if (actual && actual !== ev.data.id) return;
-      setPagado(ev.data);
+      confirmarPagado(ev.data);
       clearWatchers();
       break;
     }
@@ -143,7 +156,7 @@ ui.onNuevo(() => {
 ui.onFixturePagado(() => {
   const s = getState();
   if (!s.cobro || s.vista !== "pendiente") return;
-  setPagado(fixturePagado(s.cobro.id, s.cobro.monto));
+  confirmarPagado(fixturePagado(s.cobro.id, s.cobro.monto));
 });
 
 window.addEventListener("beforeunload", () => {

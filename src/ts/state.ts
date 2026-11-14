@@ -117,12 +117,13 @@ export function setPendiente(cobro: CobroCreado): void {
   });
 }
 
-export function setPagado(ev: EventoPagado): void {
-  if (state.cantados.has(ev.transactionId)) return;
+/** @returns true si es la primera vez que confirmamos este transactionId (disparar Bocina). */
+export function setPagado(ev: EventoPagado): boolean {
+  if (state.cantados.has(ev.transactionId)) return false;
+  const prev = state.cobro;
+  if (prev && prev.id !== ev.id) return false;
   const cantados = new Set(state.cantados);
   cantados.add(ev.transactionId);
-  const prev = state.cobro;
-  if (prev && prev.id !== ev.id) return;
   patch({
     vista: "pagado",
     cantados,
@@ -136,6 +137,7 @@ export function setPagado(ev: EventoPagado): void {
     },
     mensaje: "",
   });
+  return true;
 }
 
 export function setExpirado(id: string): void {
@@ -178,23 +180,24 @@ export function setSinConexion(mensaje = "Sin conexión con el servidor"): void 
   patch({ vista: "sin_conexion", mensaje });
 }
 
-export function applyDetalle(detalle: CobroDetalle): void {
-  if (state.cobro && state.cobro.id !== detalle.id) return;
+/** @returns EventoPagado si acabamos de pasar a pagado (para la Bocina). */
+export function applyDetalle(detalle: CobroDetalle): EventoPagado | null {
+  if (state.cobro && state.cobro.id !== detalle.id) return null;
 
   if (detalle.estado === "pagado" && detalle.transactionId) {
-    setPagado({
+    const ev: EventoPagado = {
       id: detalle.id,
       monto: detalle.montoPagado ?? detalle.monto,
       hora: detalle.pagadoEn ?? new Date().toISOString(),
       rastreoTerminacion: detalle.rastreoTerminacion ?? "????",
       transactionId: detalle.transactionId,
-    });
-    return;
+    };
+    return setPagado(ev) ? ev : null;
   }
 
   if (detalle.estado === "expirado") {
     setExpirado(detalle.id);
-    return;
+    return null;
   }
 
   if (detalle.estado === "tardio") {
@@ -203,12 +206,12 @@ export function applyDetalle(detalle: CobroDetalle): void {
       monto: detalle.montoPagado ?? detalle.monto,
       rastreoTerminacion: detalle.rastreoTerminacion,
     });
-    return;
+    return null;
   }
 
   if (detalle.estado === "error") {
     setError(detalle.mensajeError ?? "Error en el cobro", detalle.id);
-    return;
+    return null;
   }
 
   if (detalle.estado === "entregado") {
@@ -217,7 +220,7 @@ export function applyDetalle(detalle: CobroDetalle): void {
       cobro: { ...detalle },
       mensaje: "",
     });
-    return;
+    return null;
   }
 
   if (detalle.estado === "pendiente") {
@@ -227,4 +230,5 @@ export function applyDetalle(detalle: CobroDetalle): void {
       mensaje: "",
     });
   }
+  return null;
 }
