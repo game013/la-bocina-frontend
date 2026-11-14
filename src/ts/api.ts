@@ -6,8 +6,8 @@ import type {
 } from "./types";
 
 /**
- * Base del API de cobros (Rafael).
- * En `npm run dev` usamos same-origin → Vite proxifica (Rafael aún sin CORS).
+ * Base del API de Rafael (cobros + voz TTS/STT).
+ * En `npm run dev` → same-origin; Vite proxifica al tunnel.
  * En build, `VITE_API_BASE` apunta al tunnel/host.
  */
 export function apiBase(): string {
@@ -21,11 +21,21 @@ function url(path: string): string {
   return `${base}${path}`;
 }
 
+/** Bearer para POSTs (cobros, tts, stt, entregar). GET/SSE van sin header. */
+export function authHeaders(): Record<string, string> {
+  const token = String(import.meta.env.VITE_API_TOKEN ?? "").trim();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
 const CREAR_TIMEOUT_MS = 25_000;
 
 /** Mensajes legibles: Cloudflare HTML / timeouts no van crudos a la caja. */
 export function humanizeApiError(raw: string, status?: number): string {
   const t = raw.trim();
+  if (status === 401 || /no autorizado|unauthorized/i.test(t)) {
+    return "No autorizado. Revisa VITE_API_TOKEN en .env.";
+  }
   if (
     /Proxy Read Timeout|524|origin web server did not return|Cloudflare Tunnel error|Error 5\d\d/i.test(
       t,
@@ -109,7 +119,7 @@ export async function crearCobro(body: CrearCobroBody): Promise<CobroCreado> {
     "/api/cobros",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
     },
     CREAR_TIMEOUT_MS,
@@ -122,6 +132,44 @@ export async function crearCobro(body: CrearCobroBody): Promise<CobroCreado> {
 
 export async function getCobro(id: string): Promise<CobroDetalle> {
   return fetchJson<CobroDetalle>(`/api/cobros/${encodeURIComponent(id)}`);
+}
+
+/** `POST /api/cobros/:id/entregar` — requiere Bearer. */
+export async function entregarCobro(id: string): Promise<CobroDetalle> {
+  return fetchJson<CobroDetalle>(`/api/cobros/${encodeURIComponent(id)}/entregar`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+}
+
+/** Bocina: `POST /api/tts` `{texto}` → audio (ElevenLabs en el server de Rafael). */
+export async function hablarTts(texto: string): Promise<Blob> {
+  const res = await fetch(url("/api/tts"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ texto }),
+  });
+  if (!res.ok) {
+    throw new Error(await readError(res));
+  }
+  return res.blob();
+}
+
+/** Mic → monto: `POST /api/stt` body audio → `{ text }`. */
+export async function transcribirStt(audioBlob: Blob): Promise<string> {
+  const contentType = (audioBlob.type || "audio/webm").split(";")[0]!.trim() || "audio/webm";
+  const res = await fetch(url("/api/stt"), {
+    method: "POST",
+    headers: { "Content-Type": contentType, ...authHeaders() },
+    body: audioBlob,
+  });
+  if (!res.ok) {
+    throw new Error(await readError(res));
+  }
+  const data = (await res.json()) as { text?: string; texto?: string };
+  const texto = (data.text ?? data.texto ?? "").trim();
+  if (!texto) throw new Error("STT: texto vacío");
+  return texto;
 }
 
 export type StopWatch = () => void;
