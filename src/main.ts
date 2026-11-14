@@ -1,7 +1,13 @@
 import "./css/caja.css";
 import { crearCobro, pollCobro, watchEventos, type StopWatch } from "./ts/api";
-import { cantarPagado, installAudioUnlock } from "./ts/bocina";
+import {
+  cantarPagado,
+  fraseDePagado,
+  installAudioUnlock,
+  unlockAudio,
+} from "./ts/bocina";
 import { fixtureCrearCobro, fixturePagado, useFixtures } from "./ts/fixtures";
+import { grabarClip, transcribirAudio } from "./ts/voz";
 import {
   applyDetalle,
   getState,
@@ -157,6 +163,46 @@ ui.onFixturePagado(() => {
   const s = getState();
   if (!s.cobro || s.vista !== "pendiente") return;
   confirmarPagado(fixturePagado(s.cobro.id, s.cobro.monto));
+});
+
+/** Lab en ?voz=1 o ?fixture=1 — prueba TTS/STT sin cobro real. */
+ui.onProbarTts(() => {
+  void (async () => {
+    ui.setVozMsg("TTS…");
+    try {
+      await unlockAudio();
+      const frase = fraseDePagado(35, "4242");
+      const res = await fetch("/api/voz/hablar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto: frase }),
+      });
+      if (!res.ok) throw new Error(`TTS ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      await audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
+      ui.setVozMsg(`TTS ok · ${frase}`);
+    } catch (err) {
+      ui.setVozMsg(err instanceof Error ? err.message : String(err));
+    }
+  })();
+});
+
+ui.onProbarStt(() => {
+  void (async () => {
+    ui.setVozMsg("Habla ahora (~3 s)…");
+    try {
+      await unlockAudio();
+      const clip = await grabarClip(3000);
+      ui.setVozMsg("Transcribiendo…");
+      const texto = await transcribirAudio(clip);
+      ui.setVozMsg(`STT: «${texto}»`);
+    } catch (err) {
+      ui.setVozMsg(err instanceof Error ? err.message : String(err));
+    }
+  })();
 });
 
 window.addEventListener("beforeunload", () => {
