@@ -89,13 +89,15 @@ function esInicioNumero(tok: string): boolean {
   );
 }
 
-/** Quita acentos y deja letras, dígitos, punto y espacios. */
+/** Quita acentos y deja letras, dígitos, punto decimal y espacios. */
 function normalizar(raw: string): string {
   return raw
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .replace(/[^a-z0-9.\s]/gi, " ")
+    // Solo conserva «.» entre dígitos (35.50); «veintitres.» → «veintitres»
+    .replace(/(?<!\d)\.|\.(?!\d)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
