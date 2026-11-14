@@ -160,6 +160,10 @@ body {
   justify-items: center;
 }
 
+.caja-qr-wrap[hidden] {
+  display: none !important;
+}
+
 .caja-qr {
   width: min(58vw, 14rem);
   height: auto;

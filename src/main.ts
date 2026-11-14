@@ -126,8 +126,8 @@ ui.onCobrar(() => {
       wireCobroWatch(cobro.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/failed to fetch|network|load failed/i.test(msg)) {
-        setSinConexion(`Sin conexión con el servidor`);
+      if (/sin respuesta|no respondió|tunnel|sin conexión|failed to fetch|network/i.test(msg)) {
+        setSinConexion(msg);
       } else {
         setError(msg);
       }

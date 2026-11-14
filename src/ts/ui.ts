@@ -156,7 +156,11 @@ export function mountUI(root: HTMLElement): CajaUI {
     const src = qrSrc(s.cobro?.qrImage);
     const showQr = Boolean(src) && s.vista === "pendiente";
     qrWrap.hidden = !showQr;
-    if (src && showQr) qr.src = src;
+    if (src && showQr) {
+      qr.src = src;
+    } else {
+      qr.removeAttribute("src");
+    }
 
     const secs = segundosRestantes(s.cobro?.expiraEn);
     if (s.vista === "pendiente" && secs != null) {
@@ -181,7 +185,10 @@ export function mountUI(root: HTMLElement): CajaUI {
     }
 
     const canType =
-      s.vista === "idle" || s.vista === "error" || s.vista === "expirado";
+      s.vista === "idle" ||
+      s.vista === "error" ||
+      s.vista === "expirado" ||
+      s.vista === "sin_conexion";
     keysEl.querySelectorAll<HTMLButtonElement>(".caja-key").forEach((b) => {
       b.disabled = !canType;
     });
@@ -190,14 +197,16 @@ export function mountUI(root: HTMLElement): CajaUI {
     cobrarBtn.hidden = !(
       s.vista === "idle" ||
       s.vista === "error" ||
-      s.vista === "expirado"
+      s.vista === "expirado" ||
+      s.vista === "sin_conexion"
     );
     cobrarBtn.disabled = !montoOk || s.vista === "creando";
     nuevoBtn.hidden = !(
       s.vista === "pagado" ||
       s.vista === "entregado" ||
       s.vista === "tardio" ||
-      s.vista === "sin_conexion"
+      s.vista === "sin_conexion" ||
+      s.vista === "error"
     );
     fxBtn.hidden = !(showFixtureControls && s.vista === "pendiente");
   }

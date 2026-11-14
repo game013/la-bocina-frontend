@@ -63,14 +63,23 @@ export function formatMonto(pesos: number): string {
 }
 
 export function appendDigito(d: string): void {
-  if (state.vista !== "idle" && state.vista !== "error" && state.vista !== "expirado") {
+  if (
+    state.vista !== "idle" &&
+    state.vista !== "error" &&
+    state.vista !== "expirado" &&
+    state.vista !== "sin_conexion"
+  ) {
     return;
   }
 
   let digitos = state.digitos;
   let base: Partial<CajaState> = {};
-  if (state.vista === "error" || state.vista === "expirado") {
-    digitos = "";
+  if (
+    state.vista === "error" ||
+    state.vista === "expirado" ||
+    state.vista === "sin_conexion"
+  ) {
+    digitos = state.vista === "sin_conexion" ? state.digitos : "";
     base = { vista: "idle", cobro: null, mensaje: "" };
   }
 
@@ -97,7 +106,7 @@ export function resetIdle(mensaje = ""): void {
 }
 
 export function setCreando(): void {
-  patch({ vista: "creando", mensaje: "Creando cobro…" });
+  patch({ vista: "creando", cobro: null, mensaje: "Creando cobro…" });
 }
 
 export function setPendiente(cobro: CobroCreado): void {
@@ -158,9 +167,10 @@ export function setError(mensaje: string, id?: string): void {
   patch({
     vista: "error",
     mensaje,
+    // Sin QR en error: evita el ícono roto si la respuesta falló a medias.
     cobro: state.cobro
-      ? { ...state.cobro, estado: "error", mensajeError: mensaje }
-      : state.cobro,
+      ? { ...state.cobro, estado: "error", mensajeError: mensaje, qrImage: undefined }
+      : null,
   });
 }
 

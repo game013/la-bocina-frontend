@@ -21,32 +21,99 @@ function url(path: string): string {
   return `${base}${path}`;
 }
 
+const CREAR_TIMEOUT_MS = 25_000;
+
+/** Mensajes legibles: Cloudflare HTML / timeouts no van crudos a la caja. */
+export function humanizeApiError(raw: string, status?: number): string {
+  const t = raw.trim();
+  if (
+    /Proxy Read Timeout|524|origin web server did not return|Cloudflare Tunnel error|Error 5\d\d/i.test(
+      t,
+    ) ||
+    status === 524 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  ) {
+    return "El server de cobros no respondió a tiempo. Revisa el tunnel de Rafael y vuelve a cobrar.";
+  }
+  if (/Failed to fetch|NetworkError|Load failed|aborted|AbortError|timed out|timeout/i.test(t)) {
+    return "Sin respuesta del server de cobros. ¿Está arriba el tunnel?";
+  }
+  if (t.startsWith("<!") || t.includes("<html")) {
+    return "El server de cobros devolvió un error de red. Intenta de nuevo en un momento.";
+  }
+  if (t.length > 180) return `${t.slice(0, 160)}…`;
+  return t || `Error HTTP ${status ?? ""}`.trim();
+}
+
 async function readError(res: Response): Promise<string> {
+  const text = await res.text();
   try {
-    const body = (await res.json()) as { detail?: unknown; mensaje?: string };
-    if (typeof body.mensaje === "string") return body.mensaje;
-    if (typeof body.detail === "string") return body.detail;
+    const body = JSON.parse(text) as { detail?: unknown; mensaje?: string };
+    if (typeof body.mensaje === "string") return humanizeApiError(body.mensaje, res.status);
+    if (typeof body.detail === "string") return humanizeApiError(body.detail, res.status);
     if (Array.isArray(body.detail)) {
-      return body.detail
-        .map((d) => (typeof d === "object" && d && "msg" in d ? String((d as { msg: string }).msg) : JSON.stringify(d)))
+      const joined = body.detail
+        .map((d) =>
+          typeof d === "object" && d && "msg" in d
+            ? String((d as { msg: string }).msg)
+            : JSON.stringify(d),
+        )
         .join("; ");
+      return humanizeApiError(joined, res.status);
     }
-    return JSON.stringify(body);
+    return humanizeApiError(JSON.stringify(body), res.status);
   } catch {
-    return res.statusText || `HTTP ${res.status}`;
+    return humanizeApiError(text || res.statusText || `HTTP ${res.status}`, res.status);
+  }
+}
+
+async function fetchJson<T>(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<T> {
+  const ctrl = new AbortController();
+  const ms = timeoutMs ?? 15_000;
+  const timer = window.setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url(path), {
+      ...init,
+      signal: ctrl.signal,
+      headers: {
+        Accept: "application/json",
+        ...(init.headers ?? {}),
+      },
+    });
+    if (!res.ok) {
+      throw new Error(await readError(res));
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        humanizeApiError("timed out: el server no respondió a tiempo"),
+      );
+    }
+    if (err instanceof TypeError) {
+      throw new Error(humanizeApiError(err.message || "Failed to fetch"));
+    }
+    if (err instanceof Error) {
+      throw new Error(humanizeApiError(err.message));
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
   }
 }
 
 export async function crearCobro(body: CrearCobroBody): Promise<CobroCreado> {
-  const res = await fetch(url("/api/cobros"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new Error(await readError(res));
-  }
-  const data = (await res.json()) as CobroCreado;
+  const data = await fetchJson<CobroCreado>(
+    "/api/cobros",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    CREAR_TIMEOUT_MS,
+  );
   if (!data.expiraEn) {
     data.expiraEn = new Date(Date.now() + 360_000).toISOString();
   }
@@ -54,13 +121,7 @@ export async function crearCobro(body: CrearCobroBody): Promise<CobroCreado> {
 }
 
 export async function getCobro(id: string): Promise<CobroDetalle> {
-  const res = await fetch(url(`/api/cobros/${encodeURIComponent(id)}`), {
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error(await readError(res));
-  }
-  return (await res.json()) as CobroDetalle;
+  return fetchJson<CobroDetalle>(`/api/cobros/${encodeURIComponent(id)}`);
 }
 
 export type StopWatch = () => void;
