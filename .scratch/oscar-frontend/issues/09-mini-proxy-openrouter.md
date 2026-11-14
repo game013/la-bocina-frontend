@@ -1,19 +1,26 @@
-# Mini-proxy OpenRouter local
+# Mini-proxy ElevenLabs local
 
 Type: task
-Status: open
+Status: resolved
+Claimed by: oscar
 Blocked by: 02
 
 ## Question
 
-¿Cómo queda el mini-backend FastAPI en este repo para consumir OpenRouter sin exponer la key en el front?
+¿Cómo queda el mini-backend FastAPI en este repo para consumir ElevenLabs sin exponer la key en el front?
 
-Ya scaffolded: `server/main.py` con `/salud`, stubs `POST /api/voz/transcribir` y `POST /api/voz/hablar`, `server/.env.example`, Vite proxy en dev.
+## Answer
 
-Pendiente para resolver este ticket:
+`server/main.py` · key solo en `server/.env`.
 
-- Elegir modelos (sale del research 02) e implementar STT/TTS de verdad.
-- Probar “Listo” TTS en local con key en `server/.env`.
-- Documentar el one-liner de arranque (ya en README).
+| Ruta | Qué hace |
+|---|---|
+| `GET /salud` | `{ elevenlabs, tts, stt }` |
+| `POST /api/voz/hablar` `{texto}` | ElevenLabs TTS → `audio/mpeg` |
+| `POST /api/voz/transcribir` multipart `audio` | ElevenLabs Scribe → `{texto}` |
 
-Temporal: se retira cuando Rafael tome estas rutas.
+Env: `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` (default Sarah premade `EXAVITQu4vr4xnSDxMaL` — voces de biblioteca requieren plan de pago), `ELEVENLABS_TTS_MODEL`, `ELEVENLABS_STT_MODEL=scribe_v1`.
+
+Arranque: `npm run dev` + `npm run dev:voz`. Vite proxifica `/api/voz` → `:8000`.
+
+Probado: `POST /hablar` «Listo» y frase de pagado → 200 MP3.
