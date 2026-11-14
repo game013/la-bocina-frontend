@@ -19,11 +19,12 @@ El dinero y pey viven en el server de Rafael. Este repo solo pinta la caja y hab
 ### 1. Front
 
 ```bash
+cp .env.example .env   # VITE_API_BASE → tunnel de Rafael
 npm install
 npm run dev
 ```
 
-Abre `http://127.0.0.1:5173`.
+Abre `http://localhost:5173`. En DEV, Vite proxifica `/api/cobros` y `/api/eventos` al tunnel (Rafael aún sin CORS). Demo sin API: `?fixture=1`.
 
 ### 2. Mini-proxy de voz (otra terminal)
 
@@ -47,8 +48,8 @@ Comprueba: `curl http://127.0.0.1:8000/salud`
 
 ## Roadmap corto
 
-1. Fase 1: UI + fixtures + teclado + estados + Bocina (TTS vía proxy).
-2. Fase 2: cablear `POST /api/cobros`, SSE y poll al server de Rafael.
+1. ~~Fase 1: UI + teclado + estados~~ · ~~Fase 2: cobros + SSE/poll → verde~~
+2. Bocina (TTS vía mini-proxy OpenRouter).
 3. Voz de entrada: mic → STT → parser fijo (sin LLM para el monto).
 4. Stretch: botón Entregado (track #5).
 

@@ -1,7 +1,7 @@
 # Fase 1: pantalla, fixtures, teclado y estados
 
 Type: prototype
-Status: in-progress
+Status: resolved
 Claimed by: wayfinder
 Blocked by: 01
 
@@ -9,6 +9,12 @@ Blocked by: 01
 
 ¿Cómo se ve y se comporta la pantalla del cajero con datos falsos: monto gigante, teclado numérico siempre visible, QR desde `qrImage` de fixture, y todos los estados visuales (`pendiente`, `pagado`, `expirado`, `tardio`, `error`, sin conexión) sin cablear el server real?
 
-## Answer (en curso)
+## Answer
 
-Módulos `src/ts/{types,state,fixtures,ui}.ts` + `main.ts`. Teclado siempre visible; monto en centavos vía dígitos; QR desde base64; vistas por `data-vista`. Demo fixtures: `?fixture=1` (botón «Simular pagado» — solo fixtures; nunca verde por timer). Siguiente: cablear API real (issue 05).
+Módulos `src/ts/{types,state,fixtures,ui}.ts` + `main.ts` / `caja.css`.
+
+- Monto gigante; teclado 0–9 / C / ⌫ siempre visible (entrada en centavos).
+- QR desde `qrImage` base64 (fixture mínimo o respuesta real).
+- Vistas vía `data-vista`: idle, creando, pendiente, pagado, entregado, expirado, tardio, error, sin_conexion.
+- Demo: `?fixture=1` → «Simular pagado». **Nunca** verde por timer/clic fuera de ese camino de fixture.
+- API real: issue 05 (cableado en la misma racha).

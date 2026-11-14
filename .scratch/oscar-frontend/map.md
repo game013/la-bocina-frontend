@@ -9,7 +9,7 @@ Frontend de Oscar listo de punta a punta: pantalla del cajero implementada, prob
 - **Costuras con Rafael:** contrato en mensaje PASO 2 + `DIVISION_TAREAS_14NOV.md` §4. **Base live:** `https://merger-fish-gets-peace.trycloudflare.com`. Extra: `GET /api/cobros/{id}/qr` (PNG). Credenciales pey/webhook no son de Oscar. Más adelante: mover OpenRouter al backend de Rafael.
 - **Stack:** Vite + **TypeScript** modular (sin SPA framework). Módulos: estado, API cobros, Bocina, voz, fixtures. **Mini-backend FastAPI** en `server/` para `/api/voz/*` → OpenRouter; key en `server/.env` (gitignored). Arranque local mínimo (`uvicorn` + `npm run dev`). El front no lleva secretos. Repo: `game013/la-bocina-frontend` (se integrará luego con el mono-repo de Rafael).
 - **Voz:** OpenRouter de una vez (STT + TTS) vía ese mini-proxy. No Web Speech como camino principal. Micrófono del browser solo para capturar audio. Tras STT: **parser fijo, sin LLM**. Cuando Rafael esté listo, se migran las rutas o se apaga el proxy.
-- **Fases:** 1 = UI + fixtures + teclado + estados + Bocina (OpenRouter TTS); 2 = cablear API pey/cobros; luego mic + STT + parser.
+- **Fases:** 1 = UI + teclado + estados (resolved); 2 = API cobros/SSE/poll → verde (resolved, Bocina pendiente); luego mic + STT + parser.
 - **Entregado (track #5):** opcional, baja prioridad; no bloquea el destino.
 - **Fuera de Oscar:** push CoDi, mini-MCP (salvo reaccionar a evento `creado`), candados pey, README/pitch/formulario.
 - **Dispositivo:** iPhone (Safari/Chrome/Brave) u otro; teclado sigue siendo respaldo si falla red/STT.
