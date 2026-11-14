@@ -1,6 +1,6 @@
 /** Contratos de cobro / eventos (Rafael PASO 2 + DIVISION §4). */
 
-export type Canal = "qr" | "push";
+export type Canal = "qr" | "push" | "voz";
 
 export type EstadoCobro =
   | "pendiente"

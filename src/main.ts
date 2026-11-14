@@ -1,5 +1,11 @@
 import "./css/caja.css";
-import { crearCobro, pollCobro, watchEventos, type StopWatch } from "./ts/api";
+import {
+  crearCobro,
+  hablarTts,
+  pollCobro,
+  watchEventos,
+  type StopWatch,
+} from "./ts/api";
 import {
   cantarPagado,
   fraseDePagado,
@@ -25,7 +31,7 @@ import {
   setTardio,
   subscribe,
 } from "./ts/state";
-import type { EventoPagado, EventoServidor } from "./ts/types";
+import type { Canal, EventoPagado, EventoServidor } from "./ts/types";
 import { bindRender, mountUI } from "./ts/ui";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -124,7 +130,7 @@ if (!useFixtures()) {
   stopSse = watchEventos(onServidorEvent);
 }
 
-async function iniciarCobro(): Promise<void> {
+async function iniciarCobro(canal: Canal = "qr"): Promise<void> {
   const monto = parseMonto(getState().digitos);
   if (monto <= 0) return;
 
@@ -142,7 +148,7 @@ async function iniciarCobro(): Promise<void> {
     const cobro = await crearCobro({
       monto,
       concepto: "Venta",
-      canal: "qr",
+      canal,
     });
     setPendiente(cobro);
     wireCobroWatch(cobro.id);
@@ -157,7 +163,7 @@ async function iniciarCobro(): Promise<void> {
 }
 
 ui.onCobrar(() => {
-  void iniciarCobro();
+  void iniciarCobro("qr");
 });
 
 ui.onMic(() => {
@@ -187,7 +193,7 @@ ui.onMic(() => {
         return;
       }
       setDigitosDesdePesos(parsed.monto);
-      await iniciarCobro();
+      await iniciarCobro("voz");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMensajeIdle(
@@ -221,13 +227,7 @@ ui.onProbarTts(() => {
     try {
       await unlockAudio();
       const frase = fraseDePagado(35, "4242");
-      const res = await fetch("/api/voz/hablar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto: frase }),
-      });
-      if (!res.ok) throw new Error(`TTS ${res.status}`);
-      const blob = await res.blob();
+      const blob = await hablarTts(frase);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       await audio.play();

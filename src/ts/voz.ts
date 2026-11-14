@@ -1,4 +1,6 @@
-/** Captura de micrófono → POST /api/voz/transcribir (ElevenLabs Scribe). */
+/** Captura de micrófono → POST /api/stt (proxy ElevenLabs en el server de Rafael). */
+
+import { transcribirStt } from "./api";
 
 function pickMimeType(): string | undefined {
   const candidates = [
@@ -45,26 +47,5 @@ export async function grabarClip(ms = 2800): Promise<Blob> {
 }
 
 export async function transcribirAudio(blob: Blob): Promise<string> {
-  const form = new FormData();
-  const ext = blob.type.includes("mp4")
-    ? "mp4"
-    : blob.type.includes("ogg")
-      ? "ogg"
-      : blob.type.includes("wav")
-        ? "wav"
-        : "webm";
-  form.append("audio", blob, `clip.${ext}`);
-
-  const res = await fetch("/api/voz/transcribir", {
-    method: "POST",
-    body: form,
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`STT ${res.status}: ${detail.slice(0, 180)}`);
-  }
-  const data = (await res.json()) as { texto?: string };
-  const texto = (data.texto ?? "").trim();
-  if (!texto) throw new Error("STT: texto vacío");
-  return texto;
+  return transcribirStt(blob);
 }

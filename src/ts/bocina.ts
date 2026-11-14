@@ -1,3 +1,4 @@
+import { hablarTts } from "./api";
 import type { EventoPagado } from "./types";
 
 /** Frase configurable. Placeholders: {monto}, {recibido}, {terminacion} */
@@ -185,19 +186,6 @@ async function playBlob(blob: Blob, volume = 1): Promise<void> {
   }
 }
 
-async function hablarViaProxy(texto: string): Promise<Blob> {
-  const res = await fetch("/api/voz/hablar", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ texto }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`TTS ${res.status}: ${detail.slice(0, 200)}`);
-  }
-  return res.blob();
-}
-
 function hablarFake(texto: string, volume = 0.35): Promise<void> {
   return new Promise((resolve) => {
     const synth = window.speechSynthesis;
@@ -231,7 +219,7 @@ export function unlockAudio(): Promise<void> {
         await hablarFake("Listo", 0.25);
       } else {
         try {
-          const blob = await hablarViaProxy("Listo");
+          const blob = await hablarTts("Listo");
           await playBlob(blob, 0.35);
         } catch {
           tonoFallback(0.12, 120);
@@ -274,7 +262,7 @@ export async function cantarPagado(ev: EventoPagado): Promise<void> {
       await hablarFake(frase, 0.85);
       return;
     }
-    const blob = await hablarViaProxy(frase);
+    const blob = await hablarTts(frase);
     await playBlob(blob, 1);
   } catch (err) {
     console.warn("[bocina] TTS falló; tono de respaldo", err);
