@@ -105,6 +105,27 @@ export function resetIdle(mensaje = ""): void {
   });
 }
 
+/** Deja el teclado listo con un mensaje (parser / STT fallido). */
+export function setMensajeIdle(mensaje: string): void {
+  patch({
+    vista: "idle",
+    cobro: null,
+    mensaje,
+  });
+}
+
+/** Fija el monto en dígitos del pad (p. ej. tras STT) y limpia cobro previo. */
+export function setDigitosDesdePesos(pesos: number): void {
+  const cents = Math.round(pesos * 100);
+  if (!Number.isFinite(cents) || cents <= 0) return;
+  patch({
+    vista: "idle",
+    digitos: String(cents),
+    cobro: null,
+    mensaje: "",
+  });
+}
+
 export function setCreando(): void {
   patch({ vista: "creando", cobro: null, mensaje: "Creando cobro…" });
 }
